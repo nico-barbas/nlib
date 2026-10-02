@@ -477,8 +477,8 @@ App_Error app_begin_frame(App *app) {
       app->gpu_graphics_commands,
       app->window_handle,
       &app->gpu_swapchain,
-      nullptr,
-      nullptr
+      &app->gpu_swapchain_width,
+      &app->gpu_swapchain_height
   );
   if (!swapchain_ok) {
     platform_log_error(&app->logger);
@@ -1182,8 +1182,8 @@ make_gpu_graphics_pipeline(GPU_Pipeline_Create_Info *info) {
                         .slot = default_buffer_slot,
                         .pitch = (u32)info->graphics.vertex_byte_size,
                       },
-                  .vertex_attributes = sdl_attributes,
                   .num_vertex_buffers = 1,
+                  .vertex_attributes = sdl_attributes,
                   .num_vertex_attributes = sdl_attribute_count,
                 },
             .target_info =
@@ -1203,9 +1203,12 @@ make_gpu_graphics_pipeline(GPU_Pipeline_Create_Info *info) {
                 },
             .depth_stencil_state =
                 {
+                  // NOTE(nico): We hardcode the depth compare op since all the
+                  // code in this repo expects a standard [0, 1] depth
+                  // convention
                   .enable_depth_test = depth_mode != GPU_Depth_Mode_None,
                   .enable_depth_write = depth_mode == GPU_Depth_Mode_Read_Write,
-                  .compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL,
+                  .compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL,
                 },
           }
       ),
@@ -1380,11 +1383,13 @@ App_Error app_begin_render_pass(GPU_Render_Pass_Create_Info *info) {
     };
   }
 
+  // NOTE(nico): We hardcode the depth clear value since all the code in this
+  // repo is meant for standard [0, 1] convention
   SDL_GPUDepthStencilTargetInfo sdl_depth_target = {0};
   if (info->depth_target.some) {
     GPU_Render_Pass_Depth_Target *target = &info->depth_target.value;
     sdl_depth_target.texture = target->texture->handle;
-    sdl_depth_target.clear_depth = target->clear_value;
+    sdl_depth_target.clear_depth = 1.f;
     sdl_depth_target.load_op = (SDL_GPULoadOp)target->load_op;
     sdl_depth_target.store_op = (SDL_GPUStoreOp)target->store_op;
   }
@@ -1490,15 +1495,22 @@ App_Error app_end_compute_pass(void) {
 }
 
 GPU_Swapchain_Texture_Result app_get_swapchain_texture(void) {
-  if (_app == nullptr || _app->gpu_swapchain == nullptr) {
+  if (_app == nullptr) {
     return err(GPU_Swapchain_Texture_Result, GPU_Error_Uninitialized_Backend);
   }
 
-  // FIXME(nico): incomplete.. It should at least populate the dimensions
+  if (_app->gpu_swapchain == nullptr) {
+    return err(
+        GPU_Swapchain_Texture_Result, GPU_Error_Failed_To_Acquire_Swapchain
+    );
+  }
+
   return ok(
       GPU_Swapchain_Texture_Result,
       ((GPU_Texture){
         .handle = _app->gpu_swapchain,
+        .width = _app->gpu_swapchain_width,
+        .height = _app->gpu_swapchain_height,
         .format = (GPU_Texture_Format)_app->gpu_swapchain_format,
       })
   );
@@ -1543,28 +1555,6 @@ GPU_Error app_bind_pipeline(GPU_Pipeline *pipeline) {
   return GPU_Error_None;
 }
 
-GPU_Error app_push_vertex_uniform(u32 slot, rawptr data, usize size) {
-  if (_app == nullptr || _app->gpu_graphics_commands == nullptr) {
-    return GPU_Error_Uninitialized_Backend;
-  }
-
-  SDL_PushGPUVertexUniformData(
-      _app->gpu_graphics_commands, slot, data, (u32)size
-  );
-  return GPU_Error_None;
-}
-
-GPU_Error app_push_compute_uniform(u32 slot, rawptr data, usize size) {
-  if (_app == nullptr || _app->gpu_graphics_commands == nullptr) {
-    return GPU_Error_Uninitialized_Backend;
-  }
-
-  SDL_PushGPUComputeUniformData(
-      _app->gpu_graphics_commands, slot, data, (u32)size
-  );
-  return GPU_Error_None;
-}
-
 GPU_Error app_bind_sampled_textures(GPU_Textures_Bind_Info *info) {
   if (_app == nullptr) {
     return GPU_Error_Uninitialized_Backend;
@@ -1578,7 +1568,7 @@ GPU_Error app_bind_sampled_textures(GPU_Textures_Bind_Info *info) {
   }
 
   if (info->textures.len != info->samplers.len) {
-    return GPU_Failed_To_Bind_Sampled_Texture;
+    return GPU_Error_Failed_To_Bind_Sampled_Texture;
   }
 
   u32 count = (u32)info->textures.len;
@@ -1588,7 +1578,7 @@ GPU_Error app_bind_sampled_textures(GPU_Textures_Bind_Info *info) {
       _app->frame_allocator, sizeof(SDL_GPUTextureSamplerBinding) * count
   );
   if (!sdl_bindings_alloc.ok) {
-    return GPU_Failed_To_Bind_Sampled_Texture;
+    return GPU_Error_Failed_To_Bind_Sampled_Texture;
   }
 
   SDL_GPUTextureSamplerBinding *sdl_bindings =
@@ -1629,7 +1619,7 @@ GPU_Error app_bind_storage_memory(GPU_Memory_Bind_Info *info) {
     return GPU_Error_Uninitialized_Backend;
   }
 
-  GPU_Buffer *buffer = info->memory.buffer;
+  GPU_Buffer *buffer = info->buffer;
   if (buffer == nullptr || buffer->handle == nullptr) {
     return GPU_Error_Invalid_Buffer;
   }
@@ -1641,9 +1631,21 @@ GPU_Error app_bind_storage_memory(GPU_Memory_Bind_Info *info) {
     );
     break;
   case GPU_Pass_Kind_Render:
-    SDL_BindGPUVertexStorageBuffers(
-        _app->gpu_render_pass, info->slot, &buffer->handle, 1
-    );
+    switch (info->target_render_stage) {
+    case GPU_Render_Stage_Kind_Vertex:
+      SDL_BindGPUVertexStorageBuffers(
+          _app->gpu_render_pass, info->slot, &buffer->handle, 1
+      );
+      break;
+    case GPU_Render_Stage_Kind_Fragment:
+      SDL_BindGPUFragmentStorageBuffers(
+          _app->gpu_render_pass, info->slot, &buffer->handle, 1
+      );
+      break;
+    default:
+      return GPU_Error_Invalid_Render_Stage;
+      break;
+    }
     break;
   }
 
@@ -1682,6 +1684,75 @@ app_bind_storage_texture(GPU_Pass_Kind pass, GPU_Texture *texture, u32 slot) {
   return GPU_Error_None;
 }
 
+GPU_Error app_bind_vertex_buffer(u32 slot, GPU_Memory memory) {
+  if (_app == nullptr || _app->gpu_render_pass == nullptr) {
+    return GPU_Error_Uninitialized_Render_Pass;
+  }
+
+  SDL_GPUBufferBinding binding = {
+    .buffer = memory.buffer->handle,
+    .offset = (u32)memory.offset,
+  };
+  SDL_BindGPUVertexBuffers(_app->gpu_render_pass, slot, &binding, 1);
+
+  return GPU_Error_None;
+}
+
+GPU_Error app_bind_index_buffer(GPU_Memory memory, usize elem_size) {
+  if (_app == nullptr || _app->gpu_render_pass == nullptr) {
+    return GPU_Error_Uninitialized_Render_Pass;
+  }
+
+  SDL_GPUIndexElementSize sdl_elem_size = 0;
+  if (elem_size == sizeof(u16)) {
+    sdl_elem_size = SDL_GPU_INDEXELEMENTSIZE_16BIT;
+  } else if (elem_size == sizeof(u32)) {
+    sdl_elem_size = SDL_GPU_INDEXELEMENTSIZE_32BIT;
+  } else {
+    return GPU_Error_Invalid_Index_Element_Size;
+  }
+
+  SDL_GPUBufferBinding binding = {
+    .buffer = memory.buffer->handle,
+    .offset = (u32)memory.offset,
+  };
+  SDL_BindGPUIndexBuffer(_app->gpu_render_pass, &binding, sdl_elem_size);
+  return GPU_Error_None;
+}
+
+GPU_Error app_push_vertex_uniform(u32 slot, rawptr data, usize size) {
+  if (_app == nullptr || _app->gpu_graphics_commands == nullptr) {
+    return GPU_Error_Uninitialized_Backend;
+  }
+
+  SDL_PushGPUVertexUniformData(
+      _app->gpu_graphics_commands, slot, data, (u32)size
+  );
+  return GPU_Error_None;
+}
+
+GPU_Error app_push_fragment_uniform(u32 slot, rawptr data, usize size) {
+  if (_app == nullptr || _app->gpu_graphics_commands == nullptr) {
+    return GPU_Error_Uninitialized_Backend;
+  }
+
+  SDL_PushGPUFragmentUniformData(
+      _app->gpu_graphics_commands, slot, data, (u32)size
+  );
+  return GPU_Error_None;
+}
+
+GPU_Error app_push_compute_uniform(u32 slot, rawptr data, usize size) {
+  if (_app == nullptr || _app->gpu_graphics_commands == nullptr) {
+    return GPU_Error_Uninitialized_Backend;
+  }
+
+  SDL_PushGPUComputeUniformData(
+      _app->gpu_graphics_commands, slot, data, (u32)size
+  );
+  return GPU_Error_None;
+}
+
 GPU_Error app_draw_primitive(GPU_Primitive_Draw_Info *info) {
   if (_app == nullptr || _app->gpu_render_pass == nullptr) {
     return GPU_Error_Uninitialized_Render_Pass;
@@ -1690,6 +1761,24 @@ GPU_Error app_draw_primitive(GPU_Primitive_Draw_Info *info) {
   assert(info != nullptr);
   SDL_DrawGPUPrimitives(
       _app->gpu_render_pass, info->vertex_count, 1, info->first_vertex, 0
+  );
+
+  return GPU_Error_None;
+}
+
+GPU_Error app_draw_indexed_primitive(GPU_Indexed_Primitive_Draw_Info *info) {
+  if (_app == nullptr || _app->gpu_render_pass == nullptr) {
+    return GPU_Error_Uninitialized_Render_Pass;
+  }
+
+  assert(info != nullptr);
+  SDL_DrawGPUIndexedPrimitives(
+      _app->gpu_render_pass,
+      info->index_count,
+      info->instance_count,
+      info->first_index,
+      (i32)info->vertex_offset,
+      info->first_instance
   );
 
   return GPU_Error_None;

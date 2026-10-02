@@ -102,6 +102,8 @@ typedef struct App {
   u32 gpu_composition;
   u32 gpu_present_mode;
   u32 gpu_swapchain_format;
+  u32 gpu_swapchain_width;
+  u32 gpu_swapchain_height;
 
   // Runtime states
   bool32 running;
@@ -329,6 +331,9 @@ typedef enum GPU_Error {
   GPU_Error_Invalid_Texture,
   GPU_Error_Invalid_Sampler,
   GPU_Error_Invalid_Pipeline,
+  GPU_Error_Invalid_Render_Stage,
+  GPU_Error_Invalid_Index_Element_Size,
+  GPU_Error_Failed_To_Acquire_Swapchain,
   GPU_Error_Failed_To_Create_Stream,
   GPU_Error_Failed_To_Create_Buffer,
   GPU_Error_Failed_To_Create_Texture,
@@ -337,7 +342,7 @@ typedef enum GPU_Error {
   GPU_Error_Failed_To_Create_Pipeline,
   GPU_Error_Failed_To_Write_Memory,
   GPU_Error_Failed_To_Write_Texture,
-  GPU_Failed_To_Bind_Sampled_Texture,
+  GPU_Error_Failed_To_Bind_Sampled_Texture,
 } GPU_Error;
 
 typedef enum GPU_Blend_Mode {
@@ -353,11 +358,14 @@ typedef enum GPU_Depth_Mode {
 } GPU_Depth_Mode;
 
 typedef enum GPU_Load_Op {
-  GPU_Load_Op_Load,
+  GPU_Load_Op_Load = 0,
+  GPU_Load_Op_Clear = 1,
+  GPU_Load_Op_Dont_Care = 2,
 } GPU_Load_Op;
 
 typedef enum GPU_Store_Op {
-  GPU_Store_Op_Store,
+  GPU_Store_Op_Store = 0,
+  GPU_Store_Op_Dont_Care = 1,
 } GPU_Store_Op;
 
 /////////////////////////////
@@ -651,6 +659,11 @@ typedef enum GPU_Pass_Kind {
   GPU_Pass_Kind_Render,
 } GPU_Pass_Kind;
 
+typedef enum GPU_Render_Stage_Kind {
+  GPU_Render_Stage_Kind_Vertex,
+  GPU_Render_Stage_Kind_Fragment,
+} GPU_Render_Stage_Kind;
+
 typedef struct GPU_Render_Pass_Color_Target {
   GPU_Texture *texture;
   Color clear_color;
@@ -660,7 +673,6 @@ typedef struct GPU_Render_Pass_Color_Target {
 
 typedef struct GPU_Render_Pass_Depth_Target {
   GPU_Texture *texture;
-  f32 clear_value;
   GPU_Load_Op load_op;
   GPU_Store_Op store_op;
 } GPU_Render_Pass_Depth_Target;
@@ -693,7 +705,8 @@ typedef struct GPU_Textures_Bind_Info {
 
 typedef struct GPU_Memory_Bind_Info {
   GPU_Pass_Kind target_pass;
-  GPU_Memory memory;
+  GPU_Render_Stage_Kind target_render_stage;
+  GPU_Buffer *buffer;
   u32 slot;
 } GPU_Memory_Bind_Info;
 
@@ -701,6 +714,14 @@ typedef struct GPU_Primitive_Draw_Info {
   u32 vertex_count;
   u32 first_vertex;
 } GPU_Primitive_Draw_Info;
+
+typedef struct GPU_Indexed_Primitive_Draw_Info {
+  u32 index_count;
+  u32 first_index;
+  u32 instance_count;
+  u32 first_instance;
+  u32 vertex_offset;
+} GPU_Indexed_Primitive_Draw_Info;
 
 typedef struct GPU_Compute_Dispatch_Info {
   usize group_count_x;
@@ -720,15 +741,21 @@ App_Error app_end_compute_pass(void);
 
 GPU_Swapchain_Texture_Result app_get_swapchain_texture(void);
 GPU_Swapchain_Format_Result app_get_swapchain_format(void);
+
 GPU_Error app_bind_pipeline(GPU_Pipeline *pipeline);
-GPU_Error app_push_vertex_uniform(u32 slot, rawptr data, usize size);
-GPU_Error app_push_compute_uniform(u32 slot, rawptr data, usize size);
 GPU_Error app_bind_sampled_textures(GPU_Textures_Bind_Info *info);
 GPU_Error app_bind_storage_memory(GPU_Memory_Bind_Info *info);
 GPU_Error
 app_bind_storage_texture(GPU_Pass_Kind pass, GPU_Texture *texture, u32 slot);
+GPU_Error app_bind_vertex_buffer(u32 first_slot, GPU_Memory memory);
+GPU_Error app_bind_index_buffer(GPU_Memory memory, usize elem_size);
+
+GPU_Error app_push_vertex_uniform(u32 slot, rawptr data, usize size);
+GPU_Error app_push_fragment_uniform(u32 slot, rawptr data, usize size);
+GPU_Error app_push_compute_uniform(u32 slot, rawptr data, usize size);
 
 GPU_Error app_draw_primitive(GPU_Primitive_Draw_Info *info);
+GPU_Error app_draw_indexed_primitive(GPU_Indexed_Primitive_Draw_Info *info);
 GPU_Error app_dispatch_compute(GPU_Compute_Dispatch_Info *info);
 
 #endif
