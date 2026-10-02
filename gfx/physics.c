@@ -1,4 +1,4 @@
-#include "core/physics.h"
+#include "gfx/physics.h"
 
 #include "core/math.h"
 

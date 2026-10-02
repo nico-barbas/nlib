@@ -396,6 +396,51 @@ Vec4 vec4_from_vec2(Vec2 v, f32 z, f32 w) {
   return (Vec4){.raw = {v.x, v.y, z, w}};
 }
 
+Vec4 vec4_negate(Vec4 v) {
+  return (Vec4){.simd = -v.simd};
+}
+
+Vec4 vec4_add(Vec4 v1, Vec4 v2) {
+  return (Vec4){.simd = v1.simd + v2.simd};
+}
+
+Vec4 vec4_sub(Vec4 v1, Vec4 v2) {
+  return (Vec4){.simd = v1.simd - v2.simd};
+}
+
+Vec4 vec4_scale(Vec4 v, f32 s) {
+  return (Vec4){.simd = v.simd * s};
+}
+
+Vec4 vec4_hadamard_mul(Vec4 v1, Vec4 v2) {
+  return (Vec4){.simd = v1.simd * v2.simd};
+}
+
+Vec4 vec4_hadamard_div(Vec4 v1, Vec4 v2) {
+  return (Vec4){.simd = v1.simd / v2.simd};
+}
+
+f32 vec4_dot(Vec4 v1, Vec4 v2) {
+  Vec4 products = {.simd = v1.simd * v2.simd};
+  return products.x + products.y + products.z + products.w;
+}
+
+f32 vec4_length(Vec4 v) {
+  return sqrtf(vec4_dot(v, v));
+}
+
+Vec4 vec4_normalize(Vec4 v) {
+  f32 len = vec4_length(v);
+  if (len == 0.0f) {
+    return (Vec4){0};
+  }
+  return vec4_scale(v, 1.0f / len);
+}
+
+Vec4 vec4_lerp(Vec4 a, Vec4 b, f32 t) {
+  return (Vec4){.simd = a.simd + (b.simd - a.simd) * t};
+}
+
 Quat quat(f32 x, f32 y, f32 z, f32 w) {
   return (Quat){.raw = {x, y, z, w}};
 }
@@ -423,12 +468,15 @@ Quat quat_from_axis_angle(Vec3 axis, f32 angle) {
 }
 
 Quat quat_add(Quat a, Quat b) {
-  return (Quat){.raw = {a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w}};
+  return (Quat){.simd = a.simd + b.simd};
 }
 
 Quat quat_scale(Quat q, f32 s) {
-  return (Quat){.raw = {q.x * s, q.y * s, q.z * s, q.w * s}};
+  return (Quat){.simd = q.simd * s};
 }
+
+// NOTE(nico): mul and conjugate stay scalar. As vector ops they need lane
+// shuffles (__builtin_shufflevector), which read much worse than the formulas.
 
 Quat quat_mul(Quat a, Quat b) {
   return (Quat){
@@ -446,15 +494,13 @@ Quat quat_conjugate(Quat q) {
 }
 
 Quat quat_normalize(Quat q) {
-  f32 len = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  Quat squares = {.simd = q.simd * q.simd};
+  f32 len = sqrtf(squares.x + squares.y + squares.z + squares.w);
   if (len == 0.0f) {
     return quat_identity();
   }
 
-  f32 inv_len = 1.0f / len;
-  return (Quat){
-    .raw = {q.x * inv_len, q.y * inv_len, q.z * inv_len, q.w * inv_len},
-  };
+  return quat_scale(q, 1.0f / len);
 }
 
 // --- Mat4 ---

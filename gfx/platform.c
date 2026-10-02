@@ -1,4 +1,4 @@
-#include "core/platform.h"
+#include "gfx/platform.h"
 
 #include "core/allocator.h"
 #include "core/log.h"
@@ -6,7 +6,6 @@
 #include "core/runtime.h"
 #include "core/strings.h"
 #include "core/types.h"
-#include "stb_image.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>

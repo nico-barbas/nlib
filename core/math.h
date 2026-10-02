@@ -120,6 +120,7 @@ typedef struct Vec3 {
 typedef struct Vec4 {
   union {
     f32 raw[4];
+    f32 simd __attribute__((vector_size(16), packed, aligned(4)));
     struct {
       f32 x;
       f32 y;
@@ -153,6 +154,7 @@ typedef struct Vec3Int {
 typedef struct Quat {
   union {
     f32 raw[4];
+    f32 simd __attribute__((vector_size(16), packed, aligned(4)));
     struct {
       f32 x;
       f32 y;
@@ -178,7 +180,7 @@ typedef struct Mat4 {
 typedef struct Color {
   union {
     f32 raw[4];
-    f32 simd __attribute__((vector_size(16), aligned(4)));
+    f32 simd __attribute__((vector_size(16), packed, aligned(4)));
     struct {
       f32 r;
       f32 g;
@@ -245,6 +247,16 @@ void vec3int_swap(Vec3Int *a, Vec3Int *b);
 
 Vec4 vec4(f32 x, f32 y, f32 z, f32 w);
 Vec4 vec4_from_vec2(Vec2 v, f32 z, f32 w);
+Vec4 vec4_negate(Vec4 v);
+Vec4 vec4_add(Vec4 v1, Vec4 v2);
+Vec4 vec4_sub(Vec4 v1, Vec4 v2);
+Vec4 vec4_scale(Vec4 v, f32 s);
+Vec4 vec4_hadamard_mul(Vec4 v1, Vec4 v2);
+Vec4 vec4_hadamard_div(Vec4 v1, Vec4 v2);
+f32 vec4_dot(Vec4 v1, Vec4 v2);
+f32 vec4_length(Vec4 v);
+Vec4 vec4_normalize(Vec4 v);
+Vec4 vec4_lerp(Vec4 a, Vec4 b, f32 t);
 
 Quat quat(f32 x, f32 y, f32 z, f32 w);
 Quat quat_identity(void);

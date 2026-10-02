@@ -1,5 +1,5 @@
-#ifndef CORE_PHYSICS_H
-#define CORE_PHYSICS_H
+#ifndef GFX_PHYSICS_H
+#define GFX_PHYSICS_H
 
 #include "core/math.h"
 

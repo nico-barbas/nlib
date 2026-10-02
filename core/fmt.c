@@ -90,7 +90,8 @@ void fmt_printb_impl(
         builder_write_f64(b, arg->f64v, arg->precision);
         break;
       case Type_Kind_Struct:
-        assert(false);
+        assert(arg->write != nullptr);
+        arg->write(b, arg);
         break;
       }
 

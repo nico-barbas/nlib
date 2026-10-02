@@ -1,5 +1,5 @@
-#ifndef CORE_APP_H
-#define CORE_APP_H
+#ifndef GFX_APP_H
+#define GFX_APP_H
 
 #include "core/allocator.h"
 #include "core/array.h"

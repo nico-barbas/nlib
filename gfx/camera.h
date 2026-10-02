@@ -1,9 +1,9 @@
-#ifndef CORE_CAMERA_H
-#define CORE_CAMERA_H
+#ifndef GFX_CAMERA_H
+#define GFX_CAMERA_H
 
-#include "./math.h"
-#include "./physics.h"
-#include "./types.h"
+#include "core/math.h"
+#include "core/types.h"
+#include "gfx/physics.h"
 
 typedef struct Raw_Camera {
   Vec3 position;
@@ -49,6 +49,80 @@ typedef struct Debug_Camera {
 Debug_Camera debug_camera(void);
 void update_debug_camera(
     Debug_Camera *camera, f32 frame_w, f32 frame_h, f32 dt
+);
+
+typedef struct First_Person_Camera {
+  Raw_Camera base;
+  Vec3 forward;
+  f32 yaw;
+  f32 pitch;
+  f32 roll;
+
+  // Camera tweaking, for procedural animations
+  f32 mouse_sensitivity;
+  f32 yaw_offset;
+  f32 pitch_offset;
+} First_Person_Camera;
+
+First_Person_Camera first_person_camera(void);
+void update_first_person_camera(
+    First_Person_Camera *camera, f32 frame_w, f32 frame_h, f32 dt
+);
+
+typedef struct Orbit_Camera {
+  Raw_Camera base;
+
+  // States
+  f32 pitch;
+  f32 yaw;
+  f32 distance;
+  f32 next_pitch;
+  f32 next_yaw;
+  f32 next_distance;
+  Vec3 next_target;
+  f32 scroll_velocity;
+  Vec3 orbit_pivot;
+
+  // Config
+  f32 pan_speed;
+  f32 orbit_speed;
+  f32 scroll_speed;
+  f32 scroll_decay;
+  f32 mouse_sensitivity;
+  f32 min_pitch;
+  f32 max_pitch;
+  f32 min_distance;
+  f32 max_distance;
+} Orbit_Camera;
+
+Orbit_Camera orbit_camera(void);
+void update_orbit_camera(
+    Orbit_Camera *camera, f32 frame_w, f32 frame_h, f32 dt
+);
+
+typedef struct Chase_Camera {
+  Raw_Camera base;
+
+  Vec3 target_position;
+  Quat target_rotation;
+  f32 lookahead;
+  f32 distance;
+  f32 height;
+} Chase_Camera;
+
+Chase_Camera chase_camera(
+    Vec3 target_position,
+    Quat target_rotation,
+    f32 initial_distance,
+    f32 lookahead
+);
+void update_chase_camera(
+    Chase_Camera *camera,
+    Vec3 target_position,
+    Quat target_rotation,
+    f32 frame_w,
+    f32 frame_h,
+    f32 dt
 );
 
 #endif
